@@ -545,14 +545,14 @@
         else if(ay>.0024&&ay>ax*1.4) candidate='rotate-x';
         const mode=setGestureMode(candidate,now);
         if(mode==='rotate-y'){
-          targetRotY-=THREE.MathUtils.clamp(dx,-.035,.035)*5.2;
+          targetRotY-=THREE.MathUtils.clamp(dx,-.035,.035)*7.8;
           gestureTag.textContent='单指左右 · 水平旋转'; statusText.textContent='已锁定水平旋转';
         }else if(mode==='rotate-x'){
-          targetRotX-=THREE.MathUtils.clamp(dy,-.035,.035)*4.4;
+          targetRotX-=THREE.MathUtils.clamp(dy,-.035,.035)*6.6;
           targetRotX=THREE.MathUtils.clamp(targetRotX,-1.35,1.35);
           gestureTag.textContent='单指上下 · 垂直旋转'; statusText.textContent='已锁定垂直旋转';
         }else if(mode==='zoom'){
-          targetScale=THREE.MathUtils.clamp(targetScale+THREE.MathUtils.clamp(dz,-.018,.018)*8.5,.58,1.78);
+          targetScale=THREE.MathUtils.clamp(targetScale+THREE.MathUtils.clamp(dz,-.018,.018)*13,.52,1.92);
           gestureTag.textContent=dz>=0?'单指靠近 · 放大':'单指远离 · 缩小'; statusText.textContent='已锁定远近缩放';
         }else{
           gestureTag.textContent='单指 · 等待明确方向'; statusText.textContent='左右 / 上下 / 远近移动手指';
