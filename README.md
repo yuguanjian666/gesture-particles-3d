@@ -9,8 +9,10 @@ A real-time interactive Three.js particle art system controlled through webcam h
 ## Features
 
 - Open or close one hand to gather and disperse the particles.
-- Move one index finger left or right to rotate the particle formation.
+- Move one index finger left or right to rotate the particle formation horizontally.
+- Move one index finger up or down to rotate the particle formation vertically.
 - Move one index finger closer to or farther from the camera to control zoom.
+- Direction locking, motion thresholds, and release delays keep gestures from triggering one another.
 - Choose from seven particle formations: Heart, Flower, Saturn, Fireworks, Earth, *A Thousand Li of Rivers and Mountains*, and Epiphyllum.
 - Adjust particle colors in real time.
 - Use a clean, responsive interface with fullscreen support.
