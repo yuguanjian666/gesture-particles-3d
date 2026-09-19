@@ -171,8 +171,9 @@
     <button class="camera-btn" id="cameraBtn"><span class="dot"></span><span>开启手势控制</span></button>
     <div class="tips" aria-label="手势说明">
       <div class="tip"><span class="gesture-icon">✋</span><span>手掌张合 · 聚拢与扩散</span></div>
-      <div class="tip"><span class="gesture-icon">☝</span><span>单指摆动 · 旋转粒子</span></div>
-      <div class="tip"><span class="gesture-icon">↕</span><span>单指远近 · 拉近拉远</span></div>
+      <div class="tip"><span class="gesture-icon">↔</span><span>单指左右 · 水平旋转</span></div>
+      <div class="tip"><span class="gesture-icon">↕</span><span>单指上下 · 垂直旋转</span></div>
+      <div class="tip"><span class="gesture-icon">◎</span><span>单指远近 · 拉近拉远</span></div>
     </div>
   </section>
 
@@ -410,7 +411,10 @@
     const video=document.getElementById('video'), handCanvas=document.getElementById('handCanvas'), ctx=handCanvas.getContext('2d');
     const cameraBtn=document.getElementById('cameraBtn'), cameraCard=document.getElementById('cameraCard');
     const status=document.getElementById('status'), statusText=document.getElementById('statusText'), gestureTag=document.getElementById('gestureTag');
-    let recognizer=null, stream=null, lastVideoTime=-1, lastDetect=0, prevPointX=.5, smoothArea=.09;
+    let recognizer=null, stream=null, lastVideoTime=-1, lastDetect=0, smoothArea=.09;
+    let smoothPoint={x:.5,y:.5}, prevPoint={x:.5,y:.5}, smoothPalm=.16, prevPalm=.16, smoothOpen=.5;
+    let gestureMode='idle', candidateMode='idle', candidateFrames=0, modeLastActive=0, lostHandAt=0;
+    const MODE_CONFIRM_FRAMES=3, MODE_HOLD_MS=240, MODE_RELEASE_MS=180;
     const connections=[[0,1],[1,2],[2,3],[3,4],[0,5],[5,6],[6,7],[7,8],[5,9],[9,10],[10,11],[11,12],[9,13],[13,14],[14,15],[15,16],[13,17],[17,18],[18,19],[19,20],[0,17]];
     if(location.protocol==='file:'){
       cameraBtn.querySelector('span:last-child').textContent='用启动器开启摄像头';
@@ -488,9 +492,36 @@
       for(const p of lm){ ctx.beginPath(); ctx.arc(p.x*640,p.y*480,3.3,0,Math.PI*2); ctx.fill(); }
     }
     const dist=(a,b)=>Math.hypot(a.x-b.x,a.y-b.y,a.z-b.z);
-    function processHand(result){
+    function setGestureMode(candidate,now){
+      if(candidate==='idle'){
+        candidateMode='idle'; candidateFrames=0;
+        if(now-modeLastActive>MODE_RELEASE_MS) gestureMode='idle';
+        return gestureMode;
+      }
+      if(candidate===gestureMode){ modeLastActive=now; candidateMode=candidate; candidateFrames=0; return gestureMode; }
+      if(gestureMode!=='idle'&&now-modeLastActive<MODE_HOLD_MS) return gestureMode;
+      if(candidate!==candidateMode){ candidateMode=candidate; candidateFrames=1; }
+      else candidateFrames++;
+      if(candidateFrames>=MODE_CONFIRM_FRAMES){
+        gestureMode=candidate; candidateFrames=0; modeLastActive=now;
+      }
+      return gestureMode;
+    }
+    function resetGestureTracking(lm){
+      smoothPoint={x:lm[8].x,y:lm[8].y}; prevPoint={...smoothPoint};
+      smoothPalm=prevPalm=Math.max(dist(lm[0],lm[9]),.03);
+      gestureMode='idle'; candidateMode='idle'; candidateFrames=0;
+    }
+    function processHand(result,now){
       const lm=result.landmarks?.[0];
-      if(!lm){ ctx.clearRect(0,0,640,480); gestureTag.textContent='请将手放入画面'; statusText.textContent='等待手势'; return; }
+      if(!lm){
+        ctx.clearRect(0,0,640,480); gestureTag.textContent='请将手放入画面'; statusText.textContent='等待手势';
+        if(!lostHandAt) lostHandAt=now;
+        if(now-lostHandAt>220){ gestureMode='idle'; candidateMode='idle'; candidateFrames=0; }
+        return;
+      }
+      if(lostHandAt&&now-lostHandAt>220) resetGestureTracking(lm);
+      lostHandAt=0;
       drawHand(lm);
       const palm=Math.max(dist(lm[0],lm[9]),.03);
       const tips=[4,8,12,16,20], pips=[3,6,10,14,18];
@@ -498,25 +529,48 @@
       const open=extended.filter(Boolean).length/5;
       const xs=lm.map(p=>p.x), ys=lm.map(p=>p.y), area=(Math.max(...xs)-Math.min(...xs))*(Math.max(...ys)-Math.min(...ys));
       smoothArea=THREE.MathUtils.lerp(smoothArea,area,.16);
+      smoothOpen=THREE.MathUtils.lerp(smoothOpen,open,.24);
       const recognized=result.gestures?.[0]?.[0]?.categoryName;
       const pointing=recognized==='Pointing_Up'||(extended[1]&&!extended[2]&&!extended[3]&&!extended[4]);
-      targetSpread=THREE.MathUtils.lerp(targetSpread,.02+open*1.08,.24);
-      targetScale=THREE.MathUtils.lerp(targetScale,THREE.MathUtils.clamp(.72+smoothArea*4.6,.68,1.68),.14);
       if(pointing){
-        const x=lm[8].x, dx=x-prevPointX;
-        targetRotY-=dx*4.8; targetRotX=THREE.MathUtils.lerp(targetRotX,(.5-lm[8].y)*.75,.08); prevPointX=x;
-        gestureTag.textContent='单指 · 旋转 / 远近'; statusText.textContent='单指控制旋转与距离';
+        smoothPoint.x=THREE.MathUtils.lerp(smoothPoint.x,lm[8].x,.46);
+        smoothPoint.y=THREE.MathUtils.lerp(smoothPoint.y,lm[8].y,.46);
+        smoothPalm=THREE.MathUtils.lerp(smoothPalm,palm,.28);
+        const dx=smoothPoint.x-prevPoint.x, dy=smoothPoint.y-prevPoint.y, dz=smoothPalm-prevPalm;
+        const ax=Math.abs(dx), ay=Math.abs(dy), az=Math.abs(dz);
+        const screenMotion=Math.max(ax,ay), depthScore=az*2.8;
+        let candidate='idle';
+        if(depthScore>.0048&&depthScore>screenMotion*1.35) candidate='zoom';
+        else if(ax>.0024&&ax>ay*1.4) candidate='rotate-y';
+        else if(ay>.0024&&ay>ax*1.4) candidate='rotate-x';
+        const mode=setGestureMode(candidate,now);
+        if(mode==='rotate-y'){
+          targetRotY-=THREE.MathUtils.clamp(dx,-.035,.035)*5.2;
+          gestureTag.textContent='单指左右 · 水平旋转'; statusText.textContent='已锁定水平旋转';
+        }else if(mode==='rotate-x'){
+          targetRotX-=THREE.MathUtils.clamp(dy,-.035,.035)*4.4;
+          targetRotX=THREE.MathUtils.clamp(targetRotX,-1.35,1.35);
+          gestureTag.textContent='单指上下 · 垂直旋转'; statusText.textContent='已锁定垂直旋转';
+        }else if(mode==='zoom'){
+          targetScale=THREE.MathUtils.clamp(targetScale+THREE.MathUtils.clamp(dz,-.018,.018)*8.5,.58,1.78);
+          gestureTag.textContent=dz>=0?'单指靠近 · 放大':'单指远离 · 缩小'; statusText.textContent='已锁定远近缩放';
+        }else{
+          gestureTag.textContent='单指 · 等待明确方向'; statusText.textContent='左右 / 上下 / 远近移动手指';
+        }
+        prevPoint={...smoothPoint}; prevPalm=smoothPalm;
       }else{
-        prevPointX=lm[8].x;
-        targetRotY=THREE.MathUtils.lerp(targetRotY,(.5-lm[9].x)*1.25,.06);
-        gestureTag.textContent=open>.62?'张开 · 扩散':open<.28?'握拳 · 聚拢':'手掌 · 收放';
-        statusText.textContent=open>.62?'粒子正在扩散':open<.28?'粒子正在聚拢':'手掌控制收放';
+        gestureMode='palm'; candidateMode='palm'; candidateFrames=0; modeLastActive=now;
+        smoothPoint={x:lm[8].x,y:lm[8].y}; prevPoint={...smoothPoint}; smoothPalm=prevPalm=palm;
+        targetSpread=THREE.MathUtils.lerp(targetSpread,.02+smoothOpen*1.08,.24);
+        targetScale=THREE.MathUtils.lerp(targetScale,.78+smoothOpen*.34,.12);
+        gestureTag.textContent=smoothOpen>.62?'张开 · 扩散':smoothOpen<.28?'握拳 · 聚拢':'手掌 · 收放';
+        statusText.textContent=smoothOpen>.62?'粒子正在扩散':smoothOpen<.28?'粒子正在聚拢':'手掌控制收放';
       }
     }
     async function detect(now){
       if(!gestureActive||!recognizer||video.readyState<2||now-lastDetect<32||video.currentTime===lastVideoTime)return;
       lastDetect=now; lastVideoTime=video.currentTime;
-      try{ processHand(recognizer.recognizeForVideo(video,now)); }catch(e){ console.warn(e); }
+      try{ processHand(recognizer.recognizeForVideo(video,now),now); }catch(e){ console.warn(e); }
     }
 
     let toastTimer;
