@@ -187,7 +187,7 @@
   <div class="loading" id="loading"><div class="loader-core"><div class="loader-orbit"></div><p>正在生成粒子</p></div></div>
 
   <script type="module">
-    import * as THREE from 'https://gesture-particles-3d.yuguanjian666.chatgpt.site/vendor/three/three.module.js';
+    import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.182.0/build/three.module.js';
 
     const COUNT = 20000;
     const sceneHost = document.getElementById('scene');
@@ -423,11 +423,11 @@
 
     async function initRecognizer(){
       if(recognizer)return recognizer;
-      const mediaPipe=await import('https://gesture-particles-3d.yuguanjian666.chatgpt.site/vendor/mediapipe/vision_bundle.mjs');
+      const mediaPipe=await import('https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.22-rc.20250304/vision_bundle.mjs');
       const {FilesetResolver,GestureRecognizer}=mediaPipe;
-      const vision=await FilesetResolver.forVisionTasks('https://gesture-particles-3d.yuguanjian666.chatgpt.site/vendor/mediapipe/wasm');
+      const vision=await FilesetResolver.forVisionTasks('https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.22-rc.20250304/wasm');
       recognizer=await GestureRecognizer.createFromOptions(vision,{
-        baseOptions:{modelAssetPath:'https://gesture-particles-3d.yuguanjian666.chatgpt.site/vendor/mediapipe/gesture_recognizer.task',delegate:'GPU'},
+        baseOptions:{modelAssetPath:'https://storage.googleapis.com/mediapipe-models/gesture_recognizer/gesture_recognizer/float16/1/gesture_recognizer.task',delegate:'GPU'},
         runningMode:'VIDEO',numHands:1
       });
       return recognizer;
